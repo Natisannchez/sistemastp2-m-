@@ -1,0 +1,59 @@
+services:
+
+  # ── Broker de mensajería ─────────────────────────────────────────────────────
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: mpi-rabbitmq
+    ports:
+      - "5672:5672"     # AMQP
+      - "15672:15672"   # Management UI → http://localhost:15672 (guest/guest)
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  # ── Catálogo: servidor gRPC ──────────────────────────────────────────────────
+  catalogo:
+    build:
+      context: .                    # raíz del proyecto (para acceder a proto/)
+      dockerfile: catalogo/Dockerfile
+    image: mpi/catalogo:v1
+    container_name: mpi-catalogo
+    ports:
+      - "50051:50051"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  # ── Pedidos: FastAPI REST + gRPC client + RabbitMQ publisher ────────────────
+  pedidos:
+    build:
+      context: .
+      dockerfile: pedidos/Dockerfile
+    image: mpi/pedidos:v1
+    container_name: mpi-pedidos
+    ports:
+      - "8000:8000"
+    environment:
+      CATALOGO_ADDR: catalogo:50051  # DNS interno de Docker Compose
+      RABBIT_URL: amqp://guest:guest@rabbitmq:5672/
+    depends_on:
+      catalogo:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+
+  # ── Notificaciones: consumer de la cola emails ───────────────────────────────
+  notificaciones:
+    build:
+      context: .
+      dockerfile: notificaciones/Dockerfile
+    image: mpi/notificaciones:v1
+    container_name: mpi-notificaciones
+    environment:
+      RABBIT_URL: amqp://guest:guest@rabbitmq:5672/
+    depends_on:
+      rabbitmq:
+        condition: service_healthy

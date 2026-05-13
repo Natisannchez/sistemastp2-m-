@@ -1,0 +1,43 @@
+<mxfile host="app.diagrams.net" modified="2026-04-22T00:00:00.000Z" agent="Mozilla/5.0" version="24.7.17" editor="www.draw.io" type="device">
+  <diagram id="mpi-monolito-spof" name="MPI Monolito SPOF">
+    <mxGraphModel dx="1422" dy="794" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="title" value="Market-Place-Inc - Monolito TP1 (SPOFs y cuellos de botella)" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=20;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="290" y="20" width="820" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="users" value="Usuarios Web/Mobile" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=14" vertex="1" parent="1">
+          <mxGeometry x="90" y="170" width="210" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="monolith" value="FastAPI Monolito (Uvicorn)&#10;Modulo Catalogo&#10;Modulo Pedidos&#10;Modulo Inventario" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=14" vertex="1" parent="1">
+          <mxGeometry x="410" y="130" width="310" height="180" as="geometry"/>
+        </mxCell>
+        <mxCell id="db" value="MySQL Unica (DB compartida)&#10;SPOF #1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=14;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="860" y="130" width="260" height="110" as="geometry"/>
+        </mxCell>
+        <mxCell id="payment" value="Proveedor Externo de Pagos&#10;SPOF #3" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=14;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="860" y="290" width="260" height="110" as="geometry"/>
+        </mxCell>
+        <mxCell id="spof2" value="SPOF #2: Proceso unico de aplicacion&#10;Si cae Uvicorn, cae todo" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="410" y="340" width="310" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="bottleneck1" value="Cuello #1: Pool DB limitado&#10;(5 + 10 conexiones)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="860" y="450" width="260" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="bottleneck2" value="Cuello #2: Locks de inventario&#10;durante pago lento" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=13" vertex="1" parent="1">
+          <mxGeometry x="410" y="450" width="310" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2" edge="1" parent="1" source="users" target="monolith">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2" edge="1" parent="1" source="monolith" target="db">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;strokeWidth=2" edge="1" parent="1" source="monolith" target="payment">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

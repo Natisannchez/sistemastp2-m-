@@ -1,0 +1,65 @@
+# ─── Deployment ───────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalogo
+  labels:
+    app: catalogo
+spec:
+  replicas: 2                        # 2 pods → tolerancia a fallas básica
+  selector:
+    matchLabels:
+      app: catalogo                  # DEBE coincidir con template.labels
+  template:
+    metadata:
+      labels:
+        app: catalogo
+    spec:
+      containers:
+        - name: catalogo
+          image: mpi/catalogo:v1
+          imagePullPolicy: Never     # usar imagen local (kind / Docker Desktop)
+          ports:
+            - containerPort: 50051
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"        # si supera este límite → OOMKilled
+              cpu: "200m"
+          # livenessProbe: K8s mata y recrea el pod si falla
+          # Chequea SOLO que el proceso esté vivo, no dependencias externas.
+          livenessProbe:
+            tcpSocket:
+              port: 50051
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            failureThreshold: 3
+          # readinessProbe: K8s saca el pod del Service si falla (sin matarlo)
+          readinessProbe:
+            tcpSocket:
+              port: 50051
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          env:
+            - name: GRPC_PORT
+              value: "50051"
+
+---
+# ─── Service ──────────────────────────────────────────────────────────────────
+# El nombre "catalogo" es el DNS estable dentro del cluster.
+# Cualquier pod puede llamar a catalogo:50051 sin importar cuántas réplicas
+# hay ni qué IPs tienen → resuelve el problema de IPs hardcodeadas del incidente.
+apiVersion: v1
+kind: Service
+metadata:
+  name: catalogo
+spec:
+  selector:
+    app: catalogo
+  ports:
+    - port: 50051
+      targetPort: 50051
+      protocol: TCP
+  type: ClusterIP                    # solo accesible desde dentro del cluster

@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package catalogo;
+
+// ─── Mensajes ────────────────────────────────────────────────────────────────
+
+// Solicitud de consulta: qué SKU queremos consultar
+message StockRequest {
+  string sku = 1;
+}
+
+// Respuesta: disponibilidad, cantidad en stock y precio unitario
+message StockResponse {
+  string sku        = 1;
+  int32  stock      = 2;
+  double precio     = 3;
+  bool   disponible = 4;
+}
+
+// ─── Servicio ─────────────────────────────────────────────────────────────────
+
+// Contrato del microservicio Catálogo
+// REGLA: los números de campo son inmutables. Nunca cambiar ni reutilizar.
+// Para agregar campos nuevos: usar números nuevos (5, 6, …).
+service Catalogo {
+  rpc ConsultarStock(StockRequest) returns (StockResponse);
+}
