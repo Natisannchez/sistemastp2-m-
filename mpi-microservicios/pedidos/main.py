@@ -1,6 +1,8 @@
 import json
 import logging
 import os
+import urllib.error
+import urllib.request
 import uuid
 from contextlib import asynccontextmanager
 
@@ -9,8 +11,12 @@ import pika
 from fastapi import FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel
 
-import catalogo_pb2
-import catalogo_pb2_grpc
+try:
+    import catalogo_pb2
+    import catalogo_pb2_grpc
+except ModuleNotFoundError:
+    from . import catalogo_pb2
+    from . import catalogo_pb2_grpc
 from logging_config import correlation_id_var, setup_logging
 
 # ── Logging estructurado ──────────────────────────────────────────────────────
@@ -20,6 +26,7 @@ logger = logging.getLogger(__name__)
 # ── Configuración vía variables de entorno ─────────────────────────────────────
 # NUNCA hardcodear IPs. Los nombres son resueltos por Docker / K8s DNS.
 CATALOGO_ADDR = os.getenv("CATALOGO_ADDR", "catalogo:50051")
+CATALOGO_HTTP_URL = os.getenv("CATALOGO_HTTP_URL", "http://catalogo:8001")
 RABBIT_URL = os.getenv("RABBIT_URL", "amqp://guest:guest@rabbitmq:5672/")
 RABBIT_QUEUE = "emails"
 
@@ -80,6 +87,33 @@ def _consultar_stock(sku: str) -> catalogo_pb2.StockResponse:
         )
 
 
+def _reservar_stock(sku: str, cantidad: int) -> dict:
+    """
+    Solicita al inventario la reserva atomica con lock distribuido.
+
+    La API de catalogo responde 200 en exito, 400 sin stock, 503 lock tomado
+    o backend de redis con problemas. Este servicio solo traduce codigos.
+    """
+    payload = json.dumps({"sku": sku, "cantidad": cantidad}).encode("utf-8")
+    req = urllib.request.Request(
+        url=f"{CATALOGO_HTTP_URL}/reserve",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=0.8) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        if exc.code in (400, 404, 503):
+            detail = exc.read().decode("utf-8")
+            raise HTTPException(exc.code, detail=detail)
+        raise HTTPException(503, detail="inventario temporalmente no disponible")
+    except urllib.error.URLError:
+        raise HTTPException(503, detail="inventario temporalmente no disponible")
+
+
 def _publicar_evento(payload: dict) -> None:
     """
     Publica un evento order.created a la cola emails de RabbitMQ.
@@ -126,20 +160,8 @@ def crear_pedido(req: OrderRequest):
     """
     logger.info(f"crear_pedido sku={req.sku} cantidad={req.cantidad}")
 
-    # ── Paso 1: consulta síncrona de stock ────────────────────────────────────
-    try:
-        stock = _consultar_stock(req.sku)
-    except grpc.RpcError as exc:
-        logger.error(f"gRPC error code={exc.code()} details={exc.details()}")
-        raise HTTPException(503, detail="servicio catálogo temporalmente no disponible")
-
-    if not stock.disponible:
-        raise HTTPException(400, detail=f"SKU {req.sku!r} no disponible")
-    if stock.stock < req.cantidad:
-        raise HTTPException(
-            400,
-            detail=f"stock insuficiente: disponible={stock.stock}, solicitado={req.cantidad}",
-        )
+    # ── Paso 1: reserva síncrona de stock con lock distribuido ───────────────
+    reserva = _reservar_stock(req.sku, req.cantidad)
 
     # ── Paso 2: crear pedido (estado PENDING) ────────────────────────────────
     order_id = f"ORD-{uuid.uuid4().hex[:8].upper()}"
@@ -147,8 +169,8 @@ def crear_pedido(req: OrderRequest):
         "order_id": order_id,
         "sku": req.sku,
         "cantidad": req.cantidad,
-        "precio_unitario": stock.precio,
-        "total": round(stock.precio * req.cantidad, 2),
+        "precio_unitario": reserva["precio_unitario"],
+        "total": round(reserva["precio_unitario"] * req.cantidad, 2),
         "estado": "PENDING",
     }
     _pedidos[order_id] = pedido
@@ -165,6 +187,11 @@ def crear_pedido(req: OrderRequest):
     return OrderResponse(**pedido)
 
 
+@app.post("/orders", status_code=201, response_model=OrderResponse)
+def crear_order_alias(req: OrderRequest):
+    return crear_pedido(req)
+
+
 @app.get("/pedidos/{order_id}", response_model=OrderResponse)
 def obtener_pedido(order_id: str):
     pedido = _pedidos.get(order_id)
@@ -173,6 +200,16 @@ def obtener_pedido(order_id: str):
     return OrderResponse(**pedido)
 
 
+@app.get("/orders/{order_id}", response_model=OrderResponse)
+def obtener_order_alias(order_id: str):
+    return obtener_pedido(order_id)
+
+
 @app.get("/pedidos")
 def listar_pedidos():
     return {"pedidos": list(_pedidos.values()), "total": len(_pedidos)}
+
+
+@app.get("/orders")
+def listar_orders_alias():
+    return listar_pedidos()

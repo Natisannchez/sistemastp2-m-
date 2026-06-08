@@ -410,3 +410,116 @@ livenessProbe:
 ```
 
 **Aprendizaje:** la IA genera YAMLs con errores de selector que son silenciosos hasta que mirás `kubectl get pods` y ves `0/2 Ready`. Siempre validar con `kubectl apply --dry-run=client -f` y leer selector + template labels en paralelo.
+
+---
+
+## 11. Etapa 3 — Reserva con Lock + CI/CD + Observabilidad
+
+### 11.1 Endpoint de inventario `POST /reserve`
+
+Se agregó en `catalogo/main.py` un endpoint HTTP de reserva con lock distribuido en Redis:
+
+- Usa `SET lock:{sku} token NX EX 5` para exclusión mutua por producto.
+- Si no obtiene lock: responde `503`.
+- Si no hay stock: responde `400`.
+- Si hay stock: descuenta y responde `200` con stock restante.
+- El lock se libera siempre en `finally`.
+
+Ejemplo:
+
+```bash
+curl -s -X POST http://localhost:8001/reserve \
+  -H "Content-Type: application/json" \
+  -d '{"sku":"SKU-001","cantidad":1}'
+```
+
+### 11.2 Tests obligatorios (`tests/test_reserve.py`)
+
+Se agregaron los tres tests pedidos:
+
+1. Dos usuarios para stock=1, resultado: 1 éxito y 1 error, stock final 0.
+2. Cincuenta usuarios para stock=10, resultado: 10 éxitos y 40 rechazos, stock final 0.
+3. Redis lento/caído, el endpoint responde rápido con `503`.
+
+Cómo correr:
+
+```bash
+pip install -r requirements.txt
+pytest -v tests
+```
+
+Nota de validación: si comentás la lógica del lock en `reserve`, el test de concurrencia deja de garantizar la propiedad anti-overselling.
+
+### 11.3 Pipeline de GitHub Actions
+
+Archivo creado: `.github/workflows/ci-cd.yml`
+
+Incluye:
+
+- Trigger en `push` y `pull_request`.
+- Servicio Redis en runner.
+- Instalación de dependencias de `mpi-microservicios/requirements.txt`.
+- Ejecución de `pytest -v mpi-microservicios/tests`.
+- Build de imagen Docker de catálogo.
+
+### 11.4 Métricas Prometheus
+
+Métricas expuestas por `GET /metrics`:
+
+- `reserve_attempts_total`
+- `reserve_duration_seconds`
+- `inventory_stock_level`
+- `overselling_attempts_total`
+
+Además se agregó `reserve_inflight_requests` para el panel de concurrencia.
+
+Prometheus scrapea cada 15s con config en:
+
+- `observability/prometheus/prometheus.yml`
+
+### 11.5 Dashboard Grafana
+
+Se provisiona automáticamente con:
+
+- datasource: `observability/grafana/provisioning/datasources/datasource.yml`
+- dashboard provider: `observability/grafana/provisioning/dashboards/dashboards.yml`
+- dashboard JSON: `observability/grafana/dashboards/reservas-dashboard.json`
+
+Paneles:
+
+1. Latencia de reserva (p95)
+2. Stock actual (gauge)
+3. Overselling intentado (stat, debe mantenerse en 0)
+4. Reservas exitosas vs rechazadas (pie)
+5. Requests en vuelo (aproxima simultaneidad)
+
+### 11.6 Ejecución local de la etapa 3
+
+```bash
+cd mpi-microservicios
+docker compose up --build
+```
+
+URLs:
+
+- Inventario HTTP: `http://localhost:8001`
+- Prometheus: `http://localhost:9090`
+- Grafana: `http://localhost:3000` (admin/admin)
+
+### 11.7 Load test final con Locust
+
+Se actualizó `../locustfile.py` para atacar `POST /reserve`.
+
+Ejemplo (10 minutos, 50 usuarios):
+
+```bash
+locust -f ../locustfile.py --headless \
+  -u 50 -r 5 --run-time 10m --host http://localhost:8001
+```
+
+Evidencia a capturar para el informe:
+
+- Latencia durante carga.
+- Caída progresiva de stock.
+- `overselling_attempts_total = 0` durante toda la prueba.
+- Distribución de exitosas/rechazadas.

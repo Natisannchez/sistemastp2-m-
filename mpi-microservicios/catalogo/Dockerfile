@@ -29,5 +29,6 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=10s \
     CMD python -c "import socket; socket.create_connection(('localhost', 50051), 1)" || exit 1
 
 EXPOSE 50051
+EXPOSE 8001
 
 CMD ["python", "main.py"]

@@ -1,0 +1,39 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+
+    env:
+      PYTHONPATH: mpi-microservicios
+      REDIS_HOST: localhost
+      REDIS_PORT: "6379"
+      REDIS_TIMEOUT: "0.2"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r mpi-microservicios/requirements.txt
+
+      - name: Run tests
+        run: pytest -v mpi-microservicios/tests
+
+      - name: Build Docker image
+        run: docker build -t mpi-catalogo:latest -f mpi-microservicios/catalogo/Dockerfile mpi-microservicios
