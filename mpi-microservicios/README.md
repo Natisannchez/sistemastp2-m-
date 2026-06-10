@@ -178,6 +178,71 @@ docker compose start notificaciones
 - Python 3.11+
 - `kubectl`
 
+
+### Tutorial de ejecución
+
+#### Paso 1: ir a la carpeta del proyecto
+
+```bash
+cd mpi-microservicios
+```
+
+#### Paso 2: levantar todos los servicios
+
+```bash
+docker compose up --build
+```
+
+Este comando arranca:
+
+- `catalogo` en `http://localhost:8001`
+- `pedidos` en `http://localhost:8000`
+- `redis` en `localhost:6379`
+- `prometheus` en `http://localhost:9090`
+- `grafana` en `http://localhost:3000`
+- `rabbitmq` en `http://localhost:15672`
+
+#### Paso 3: comprobar que todo respondió
+
+Abrí en el navegador:
+
+```text
+http://localhost:8001/health
+http://localhost:8001/metrics
+http://localhost:9090
+http://localhost:3000
+http://localhost:15672
+```
+
+#### Paso 4: entrar a Grafana
+
+Credenciales por defecto:
+
+- usuario: `admin`
+- contraseña: `admin`
+
+#### Paso 5: correr la prueba de carga
+
+Desde la raíz del repo `sistemastp2`:
+
+```bash
+locust -f .\locustfile.py --headless -u 50 -r 5 --run-time 10m --host http://localhost:8001
+```
+
+#### Paso 6: mirar el dashboard mientras corre la carga
+
+En Grafana revisá:
+
+- latencia de reserva
+- stock actual
+- overselling, que debe seguir en 0
+- reservas exitosas vs rechazadas
+- concurrencia en curso
+
+#### Paso 7: guardar evidencia
+
+Tomá capturas durante la ejecución para incluirlas en el informe final.
+
 ### Levantar con Docker Compose (entorno local)
 
 ```bash
@@ -489,7 +554,7 @@ Paneles:
 
 1. Latencia de reserva (p95)
 2. Stock actual (gauge)
-3. Overselling intentado (stat, debe mantenerse en 0)
+3. Overselling intentado (stat, debe mantenerse en 0; solo subiría si apareciera una inconsistencia real de inventario)
 4. Reservas exitosas vs rechazadas (pie)
 5. Requests en vuelo (aproxima simultaneidad)
 

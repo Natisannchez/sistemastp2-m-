@@ -164,11 +164,15 @@ def reserve(payload: dict, r: redis.Redis = Depends(get_redis_client)) -> dict:
 
             stock_actual = producto["stock"]
             if stock_actual < cantidad:
-                overselling_attempts_total.inc()
                 reserve_attempts_total.labels(result="insufficient_stock").inc()
                 raise HTTPException(status_code=400, detail="Sin stock")
 
             nuevo_stock = stock_actual - cantidad
+            if nuevo_stock < 0:
+                overselling_attempts_total.inc()
+                reserve_attempts_total.labels(result="overselling_guard").inc()
+                raise HTTPException(status_code=500, detail="Inconsistencia de inventario")
+
             producto["stock"] = nuevo_stock
             inventory_stock_level.labels(sku=sku).set(nuevo_stock)
             reserve_attempts_total.labels(result="success").inc()
